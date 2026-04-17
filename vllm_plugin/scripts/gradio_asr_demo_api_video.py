@@ -802,11 +802,11 @@ class VibeVoiceAPIClient:
         show_keys = ["Start", "End", "Speaker", "Content"]
         keys_text = ", ".join(show_keys)
         if output_mode == "translate":
-            prompt_text = f"This is a {duration:.2f} seconds audio. Please transcribe and translate it into {target_language} with these keys: {keys_text}. Keep timestamps and speaker labels, and put translated text in Content."
+            prompt_text = f"This is a {duration:.2f} seconds audio. Please transcribe and translate it into {target_language} with these keys: {keys_text}. Keep timestamps and speaker labels, and put only translated text in Content."
         else:
             prompt_text = (
                 f"This is a {duration:.2f} seconds audio, please transcribe it with these keys: "
-                + ", ".join(show_keys)
+                + keys_text
             )
         
         # Add context info if provided
