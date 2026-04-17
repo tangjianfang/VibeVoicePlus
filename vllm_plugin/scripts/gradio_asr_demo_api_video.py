@@ -803,7 +803,7 @@ class VibeVoiceAPIClient:
         if output_mode == "translate":
             prompt_text = (
                 f"This is a {duration:.2f} seconds audio. Please transcribe and translate it into {target_language} "
-                f"with these keys: " + ", ".join(show_keys)
+                f"with these keys: {', '.join(show_keys)}"
                 + ". Keep timestamps and speaker labels, and put translated text in Content."
             )
         else:
@@ -2032,7 +2032,7 @@ def create_gradio_interface(api_url: str, model_name: str = None, default_max_to
                     recorded_video_path = video_rec
                 elif screen_rec is not None and video_prev == screen_rec:
                     recorded_video_path = screen_rec
-                if recorded_video_path is not None:
+                if recorded_video_path:
                     print(f"[INFO] Recorded video detected: {recorded_video_path}")
                     converted_path, error = convert_video_to_mp4(recorded_video_path, height=480, crf=28, fps=30)
                     if converted_path:
