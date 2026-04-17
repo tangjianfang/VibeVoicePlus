@@ -800,12 +800,9 @@ class VibeVoiceAPIClient:
         
         # Build prompt
         show_keys = ["Start", "End", "Speaker", "Content"]
+        keys_text = ", ".join(show_keys)
         if output_mode == "translate":
-            prompt_text = (
-                f"This is a {duration:.2f} seconds audio. Please transcribe and translate it into {target_language} "
-                f"with these keys: {', '.join(show_keys)}"
-                + ". Keep timestamps and speaker labels, and put translated text in Content."
-            )
+            prompt_text = f"This is a {duration:.2f} seconds audio. Please transcribe and translate it into {target_language} with these keys: {keys_text}. Keep timestamps and speaker labels, and put translated text in Content."
         else:
             prompt_text = (
                 f"This is a {duration:.2f} seconds audio, please transcribe it with these keys: "
@@ -2027,11 +2024,11 @@ def create_gradio_interface(api_url: str, model_name: str = None, default_max_to
             # Always use preview content - it shows what will be transcribed
             if video_prev is not None:
                 # Check if it's a recorded video that needs conversion
-                recorded_video_path = None
-                if video_rec is not None and video_prev == video_rec:
-                    recorded_video_path = video_rec
-                elif screen_rec is not None and video_prev == screen_rec:
-                    recorded_video_path = screen_rec
+                recorded_video_path = (
+                    video_rec if video_rec is not None and video_prev == video_rec
+                    else screen_rec if screen_rec is not None and video_prev == screen_rec
+                    else None
+                )
                 if recorded_video_path:
                     print(f"[INFO] Recorded video detected: {recorded_video_path}")
                     converted_path, error = convert_video_to_mp4(recorded_video_path, height=480, crf=28, fps=30)
