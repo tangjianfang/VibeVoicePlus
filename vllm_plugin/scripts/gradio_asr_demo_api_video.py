@@ -780,6 +780,8 @@ class VibeVoiceAPIClient:
         temperature: float = 0.0,
         top_p: float = 1.0,
         context_info: str = None,
+        output_mode: str = "transcribe",
+        target_language: str = "English",
         timeout: int = 1200,
     ) -> AsyncGenerator[Tuple[str, Optional[Dict]], None]:
         """
@@ -798,10 +800,14 @@ class VibeVoiceAPIClient:
         
         # Build prompt
         show_keys = ["Start", "End", "Speaker", "Content"]
-        prompt_text = (
-            f"This is a {duration:.2f} seconds audio, please transcribe it with these keys: "
-            + ", ".join(show_keys)
-        )
+        keys_text = ", ".join(show_keys)
+        if output_mode == "translate":
+            prompt_text = f"This is a {duration:.2f} seconds audio. Please transcribe and translate it into {target_language} with these keys: {keys_text}. Keep timestamps and speaker labels, and put only translated text in Content."
+        else:
+            prompt_text = (
+                f"This is a {duration:.2f} seconds audio, please transcribe it with these keys: "
+                + keys_text
+            )
         
         # Add context info if provided
         if context_info and context_info.strip():
@@ -1161,6 +1167,8 @@ async def transcribe_audio(
     top_p: float,
     do_sample: bool,
     context_info: str = "",
+    output_mode: str = "transcribe",
+    target_language: str = "English",
     max_video_size_mb: float = DEFAULT_MAX_VIDEO_SIZE_MB
 ) -> AsyncGenerator[Tuple[str, str, Optional[str], Optional[str], Optional[str]], None]:
     """
@@ -1289,6 +1297,8 @@ async def transcribe_audio(
             temperature=actual_temp,
             top_p=top_p,
             context_info=context_info,
+            output_mode=output_mode,
+            target_language=target_language,
         ):
             # Track accumulated text
             if text:
@@ -1648,7 +1658,7 @@ def create_gradio_interface(api_url: str, model_name: str = None, default_max_to
     
     with gr.Blocks(title="VibeVoice ASR Demo") as demo:
         gr.Markdown("# 🎙️ VibeVoice ASR Demo")
-        gr.Markdown("Upload audio/video files or record from microphone to get speech-to-text transcription with speaker diarization.")
+        gr.Markdown("Upload audio/video, record from microphone, or capture playback/system audio for real-time transcription or translation.")
         
         # Store max video size for use in transcribe function
         max_video_size_state = gr.State(value=max_video_size_mb)
@@ -1712,6 +1722,13 @@ def create_gradio_interface(api_url: str, model_name: str = None, default_max_to
                             include_audio=True,
                             interactive=True
                         )
+                    with gr.TabItem("🖥️ Capture System Audio"):
+                        screen_record = gr.Video(
+                            label="Capture screen/tab with audio (playback device)",
+                            sources=["screen"],
+                            include_audio=True,
+                            interactive=True
+                        )
                 
                 # Preview section - expanded by default
                 with gr.Accordion("👁️ Media Preview", open=True):
@@ -1739,6 +1756,22 @@ def create_gradio_interface(api_url: str, model_name: str = None, default_max_to
                             lines=5,
                             max_lines=6,
                             interactive=True,
+                        )
+                        output_mode_radio = gr.Radio(
+                            choices=[
+                                ("Transcribe", "transcribe"),
+                                ("Translate", "translate"),
+                            ],
+                            value="transcribe",
+                            label="Output Mode"
+                        )
+                        target_language_dropdown = gr.Dropdown(
+                            choices=[
+                                "English", "Chinese", "Japanese", "Korean", "French",
+                                "German", "Spanish", "Portuguese", "Italian", "Russian"
+                            ],
+                            value="English",
+                            label="Target Language (Translate mode)"
                         )
                     
                     # Sampling parameters - side by side with Hotwords
@@ -1898,6 +1931,13 @@ def create_gradio_interface(api_url: str, model_name: str = None, default_max_to
             outputs=[audio_preview, video_preview]
         )
         
+        # Update preview when screen/tab is captured
+        screen_record.change(
+            fn=update_video_preview,
+            inputs=[screen_record],
+            outputs=[audio_preview, video_preview]
+        )
+        
         # Example button handlers - clear upload/record inputs when example is selected
         def load_example_chat():
             """Load chat example with video preview, clear other inputs."""
@@ -1910,8 +1950,9 @@ def create_gradio_interface(api_url: str, model_name: str = None, default_max_to
                     gr.update(value=None),                       # media_input (clear)
                     gr.update(value=None),                       # audio_record (clear)
                     gr.update(value=None),                       # video_record (clear)
+                    gr.update(value=None),                       # screen_record (clear)
                 )
-            return gr.update(), gr.update(), "", gr.update(), gr.update(), gr.update()
+            return gr.update(), gr.update(), "", gr.update(), gr.update(), gr.update(), gr.update()
         
         def load_example_song():
             """Load song example with video preview, clear other inputs."""
@@ -1924,8 +1965,9 @@ def create_gradio_interface(api_url: str, model_name: str = None, default_max_to
                     gr.update(value=None),                       # media_input (clear)
                     gr.update(value=None),                       # audio_record (clear)
                     gr.update(value=None),                       # video_record (clear)
+                    gr.update(value=None),                       # screen_record (clear)
                 )
-            return gr.update(), gr.update(), "", gr.update(), gr.update(), gr.update()
+            return gr.update(), gr.update(), "", gr.update(), gr.update(), gr.update(), gr.update()
         
         def load_example_hotword():
             """Load hotword example with VibeVoice in context, clear other inputs."""
@@ -1938,25 +1980,26 @@ def create_gradio_interface(api_url: str, model_name: str = None, default_max_to
                     gr.update(value=None),                       # media_input (clear)
                     gr.update(value=None),                       # audio_record (clear)
                     gr.update(value=None),                       # video_record (clear)
+                    gr.update(value=None),                       # screen_record (clear)
                 )
-            return gr.update(), gr.update(), "VibeVoice", gr.update(), gr.update(), gr.update()
+            return gr.update(), gr.update(), "VibeVoice", gr.update(), gr.update(), gr.update(), gr.update()
         
         example1_btn.click(
             fn=load_example_chat,
             inputs=[],
-            outputs=[audio_preview, video_preview, context_info_input, media_input, audio_record, video_record]
+            outputs=[audio_preview, video_preview, context_info_input, media_input, audio_record, video_record, screen_record]
         )
         
         example2_btn.click(
             fn=load_example_song,
             inputs=[],
-            outputs=[audio_preview, video_preview, context_info_input, media_input, audio_record, video_record]
+            outputs=[audio_preview, video_preview, context_info_input, media_input, audio_record, video_record, screen_record]
         )
         
         example3_btn.click(
             fn=load_example_hotword,
             inputs=[],
-            outputs=[audio_preview, video_preview, context_info_input, media_input, audio_record, video_record]
+            outputs=[audio_preview, video_preview, context_info_input, media_input, audio_record, video_record, screen_record]
         )
         
         def reset_stop_flag():
@@ -1972,7 +2015,7 @@ def create_gradio_interface(api_url: str, model_name: str = None, default_max_to
             print("[INFO] Stop flag set - stopping generation...")
             return "⏹️ Stop requested, waiting for current chunk to complete..."
         
-        def get_media_input(file_input, audio_rec, video_rec, audio_prev, video_prev):
+        def get_media_input(file_input, audio_rec, video_rec, screen_rec, audio_prev, video_prev):
             """Get the media input from preview (which shows what will be transcribed).
             
             Priority: preview content (video_prev > audio_prev) since that's what user sees.
@@ -1981,9 +2024,14 @@ def create_gradio_interface(api_url: str, model_name: str = None, default_max_to
             # Always use preview content - it shows what will be transcribed
             if video_prev is not None:
                 # Check if it's a recorded video that needs conversion
-                if video_rec is not None and video_prev == video_rec:
-                    print(f"[INFO] Recorded video detected: {video_rec}")
-                    converted_path, error = convert_video_to_mp4(video_rec, height=480, crf=28, fps=30)
+                recorded_video_path = (
+                    video_rec if video_rec is not None and video_prev == video_rec
+                    else screen_rec if screen_rec is not None and video_prev == screen_rec
+                    else None
+                )
+                if recorded_video_path:
+                    print(f"[INFO] Recorded video detected: {recorded_video_path}")
+                    converted_path, error = convert_video_to_mp4(recorded_video_path, height=480, crf=28, fps=30)
                     if converted_path:
                         print(f"[INFO] Recorded video converted to 480p@30fps: {converted_path}")
                         return converted_path
@@ -1995,16 +2043,16 @@ def create_gradio_interface(api_url: str, model_name: str = None, default_max_to
             return None
         
         async def transcribe_wrapper(
-            file_input, audio_rec, video_rec, audio_prev, video_prev, max_tokens, temp, top_p, do_sample, context_info, max_video_size
+            file_input, audio_rec, video_rec, screen_rec, audio_prev, video_prev, max_tokens, temp, top_p, do_sample, context_info, output_mode, target_language, max_video_size
         ):
             """Wrapper to handle file/recording input and process results."""
-            media = get_media_input(file_input, audio_rec, video_rec, audio_prev, video_prev)
+            media = get_media_input(file_input, audio_rec, video_rec, screen_rec, audio_prev, video_prev)
             
             video_html = ""
             srt_file_path = None
             
             async for raw_text, segments_html, srt_content, video_path, vtt_content in transcribe_audio(
-                media, max_tokens, temp, top_p, do_sample, context_info, max_video_size
+                media, max_tokens, temp, top_p, do_sample, context_info, output_mode, target_language, max_video_size
             ):
                 # Generate video player HTML with subtitles if video was uploaded
                 if video_path and vtt_content:
@@ -2088,6 +2136,7 @@ def create_gradio_interface(api_url: str, model_name: str = None, default_max_to
                 media_input,
                 audio_record,
                 video_record,
+                screen_record,
                 audio_preview,
                 video_preview,
                 max_tokens_slider,
@@ -2095,6 +2144,8 @@ def create_gradio_interface(api_url: str, model_name: str = None, default_max_to
                 top_p_slider,
                 do_sample_checkbox,
                 context_info_input,
+                output_mode_radio,
+                target_language_dropdown,
                 max_video_size_state
             ],
             outputs=[
